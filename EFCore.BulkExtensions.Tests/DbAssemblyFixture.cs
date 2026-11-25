@@ -72,6 +72,11 @@ public class DbAssemblyFixture : IDisposable
             if (container.State != TestcontainersStates.Running)
             {
                 container.StartAsync().GetAwaiter().GetResult();
+
+                if (dbServerType == DbServerType.SQLServer)
+                {
+                    DisableParallelism(_msSqlContainer!);
+                }
             }
 
             if (dbServerType == DbServerType.MySQL)
@@ -113,6 +118,18 @@ public class DbAssemblyFixture : IDisposable
                 return builder.ToString();
             }
         }
+    }
+
+    // The bulk MERGE statements get parallel plans that stall in their own exchange waits (CXCONSUMER, CXSYNC_PORT)
+    // for tens of seconds, so bulk tests ran 30-40 s and timed out now and then; serial plans finish the same tests in seconds
+    private static void DisableParallelism(MsSqlContainer msSqlContainer)
+    {
+        using var connection = new SqlConnection(msSqlContainer.GetConnectionString());
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'max degree of parallelism', 1; RECONFIGURE;";
+        command.ExecuteNonQuery();
     }
 
     private static readonly object _locker = new();
