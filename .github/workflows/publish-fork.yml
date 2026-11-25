@@ -1,0 +1,84 @@
+name: Publish fork package to NuGet
+
+# Pushing a tag `fork/<version>` on the release branch is the release: this tests the EF Core 11 build,
+# packs EFCore.BulkExtensions.v11.SqlServer as Fork.EFCore.BulkExtensions.MIT.SqlServer <version> and pushes it
+# to nuget.org. The version must be the project's own (11.$(BaseVersion)) or a prerelease of it.
+# `workflow_dispatch` reruns a release for an existing tag. See FORK.md.
+on:
+  push:
+    tags: [ "fork/*" ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version to publish (must match an existing fork/<version> tag)"
+        required: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  PROJECT: NugetProjects/EFCore.BulkExtensions.v11.SqlServer/EFCore.BulkExtensions.v11.SqlServer.csproj
+  TESTS: Tests/EFCore.BulkExtensions.v11.Tests/EFCore.BulkExtensions.v11.Tests.csproj
+  PACKAGE_ID: Fork.EFCore.BulkExtensions.MIT.SqlServer
+
+jobs:
+  publish:
+    # Linux: the tests start SQL Server, PostgreSQL and MySQL containers (Testcontainers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Trusted Publishing: nuget.org has a policy bound to this repository and workflow file; NuGet/login
+    # exchanges the job's OIDC token for a short-lived API key, so no secret is stored anywhere.
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('fork/{0}', inputs.version) || github.ref }}
+
+      - name: Setup .NET 11
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 11.x
+
+      - name: Resolve version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#fork/}"
+          fi
+          PROJECT_VERSION=$(dotnet msbuild "$PROJECT" -getProperty:Version)
+          case "$VERSION" in
+            "$PROJECT_VERSION" | "$PROJECT_VERSION"-*) ;;
+            *) echo "::error::Version '$VERSION' does not match the project's version '$PROJECT_VERSION' (11.\$(BaseVersion) in NugetProjects/Directory.Build.props)."; exit 1 ;;
+          esac
+          PACKAGE_ID_RESOLVED=$(dotnet msbuild "$PROJECT" -getProperty:PackageId)
+          if [ "$PACKAGE_ID_RESOLVED" != "$PACKAGE_ID" ]; then
+            echo "::error::The project packs as '$PACKAGE_ID_RESOLVED', not '$PACKAGE_ID'. Release from the release branch."; exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Publishing $PACKAGE_ID $VERSION"
+
+      - name: Test
+        run: dotnet test "$TESTS" --configuration Release
+
+      - name: Pack
+        run: dotnet pack "$PROJECT" --configuration Release -p:Version=${{ env.VERSION }} --output artifacts
+
+      - name: Upload package
+        uses: actions/upload-artifact@v6
+        with:
+          name: nupkg-${{ env.VERSION }}
+          path: artifacts/*.nupkg
+
+      - name: NuGet login
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: oleksandr.semeniuk
+
+      - name: Push
+        run: dotnet nuget push "artifacts/${{ env.PACKAGE_ID }}.${{ env.VERSION }}.nupkg" --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }}

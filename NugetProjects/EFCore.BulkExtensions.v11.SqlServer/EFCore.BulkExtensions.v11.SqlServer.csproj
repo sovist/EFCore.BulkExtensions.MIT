@@ -1,4 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
+    <!-- Fork release (release branch only): published from sovist/EFCore.BulkExtensions.MIT under its own id until upstream ships EF Core 11. See FORK.md. -->
+    <PropertyGroup>
+        <PackageId>Fork.EFCore.BulkExtensions.MIT.SqlServer</PackageId>
+        <Title>Fork.EFCore.BulkExtensions.MIT.SqlServer</Title>
+        <Authors>borisdj, Jindrich Cincibuch, Oleksandr Semeniuk</Authors>
+        <Description>EF Core 11 build of EFCore.BulkExtensions.MIT.SqlServer (bulk Insert, Update, Delete, Read and BatchUpdate/BatchDelete for SQL Server), published from a fork until upstream releases EF Core 11 support. Same code, assembly and namespaces as upstream. Not affiliated with the upstream maintainers.</Description>
+        <PackageProjectUrl>https://github.com/sovist/EFCore.BulkExtensions.MIT</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/sovist/EFCore.BulkExtensions.MIT</RepositoryUrl>
+    </PropertyGroup>
+    <ItemGroup>
+        <!-- The package readme is the fork's: upstream's would point readers at upstream's package ids -->
+        <None Remove="..\..\README.md"/>
+        <None Include="..\..\FORK-PACKAGE.md" PackagePath="README.md" Pack="True"/>
+    </ItemGroup>
     <ItemGroup>
         <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.2"/>
         <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="11.0.0"/>
