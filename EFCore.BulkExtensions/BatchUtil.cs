@@ -308,8 +308,15 @@ public static class BatchUtil
                 bool updateColumnExplicit = updateColumns != null && updateColumns.Contains(propertyName);
                 if (isDifferentFromDefault || updateColumnExplicit)
                 {
-                    sql += $"[{columnName}] = @{columnName}, ";
                     var parameterName = $"@{columnName}";
+                    // Parameter names are case-insensitive on SQL Server, and since EF Core 11 a captured variable's parameter
+                    // is named after the variable (@price), so it can clash with this one (@Price) and take its value
+                    if (parameters.OfType<IDataParameter>().Any(p => string.Equals(p.ParameterName, parameterName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        parameterName = $"@{columnName}_{parameters.Count}";
+                    }
+
+                    sql += $"[{columnName}] = {parameterName}, ";
                     IDbDataParameter? param = TryCreateRelationalMappingParameter(
                         columnName,
                         parameterName,
@@ -322,7 +329,7 @@ public static class BatchUtil
 
                         param = new SqlParameter
                         {
-                            ParameterName = $"@{columnName}",
+                            ParameterName = parameterName,
                             Value = propertyUpdateValue
                         };
                         if (!isDifferentFromDefault && propertyUpdateValue == DBNull.Value

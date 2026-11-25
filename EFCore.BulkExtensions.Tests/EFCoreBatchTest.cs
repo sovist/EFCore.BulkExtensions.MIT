@@ -201,6 +201,11 @@ FROM [Parent] AS [p]
 LEFT JOIN [ParentDetail] AS [p0] ON [p].[ParentId] = [p0].[ParentId]
 WHERE [p].[ParentId] < 5 AND [p0].[Notes] IS NOT NULL AND [p0].[Notes] NOT LIKE N''";
 
+#if V11
+        // EF Core 11 translates ?? to ISNULL on SQL Server when both operands have the same type
+        expectedSql = expectedSql.Replace("COALESCE([p1].[Notes], N'Fallback')", "ISNULL([p1].[Notes], N'Fallback')");
+#endif
+
         Assert.Equal(expectedSql.Replace("\r\n", "\n"), actualSqlExecuted?.Replace("\r\n", "\n"));
 
         context.Parents.Where(parent => parent.ParentId == 1)
@@ -239,7 +244,7 @@ FROM [Parent] AS [p]
 WHERE [p].[ParentId] = 1";
 #endif
 
-#if V9 || V10
+#if V9 || V10 || V11
                 expectedSql =
 @"UPDATE p SET  [p].[Description] = (COALESCE(CONVERT(varchar(100), (
     SELECT COALESCE(SUM([c].[Value]), 0.0)
@@ -247,6 +252,11 @@ WHERE [p].[ParentId] = 1";
     WHERE [p].[ParentId] = [c].[ParentId] AND [c].[IsEnabled] = CAST(1 AS bit) AND [c].[Value] = @__p_0)), '')) , [p].[Value] = @param_1 
 FROM [Parent] AS [p]
 WHERE [p].[ParentId] = 1";
+#endif
+
+#if V11
+        // EF Core 11 names a captured variable's parameter after the variable, without the __..._0 decoration
+        expectedSql = expectedSql.Replace("[c].[Value] = @__p_0", "[c].[Value] = @p");
 #endif
         
  Console.WriteLine(actualSqlExecuted);
